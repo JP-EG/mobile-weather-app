@@ -7,6 +7,7 @@ type WeatherCondition = {
 
 // Location information
 export type Location = {
+    id: any;
     name: string;
     region: string;
     country: string;

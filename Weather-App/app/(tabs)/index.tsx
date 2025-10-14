@@ -1,5 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Keyboard, TouchableWithoutFeedback, StyleSheet, FlatList, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
 import { LinearGradient } from 'expo-linear-gradient';
 import WeatherHeaderDetails from '@/components/WeatherHeaderDetails';
 import WeatherIcon from '@/components/WeatherIcon';
@@ -10,36 +12,24 @@ import { getHourIndex } from '@/utils/time';
 import WeatherTempAndCondition from '@/components/WeatherTempAndCondition';
 import HumidityDisplay from '@/components/HumidityDisplay';
 import WindSpeedDisplay from '@/components/WindSpeedDisplay';
-import Constants from 'expo-constants';
-
-const { WEATHER_API_KEY, BASE_URL } = Constants.expoConfig?.extra ?? {};
-
-const fetchLocationSuggestions = async (query: string) => {
-  if (!query) return [];
-  const res = await fetch(`${BASE_URL}/search.json?key=${WEATHER_API_KEY}&q=${query}`);
-  return res.json();
-};
-
-const fetchWeatherForCity = async (city: string, setWeather: any, setLocation: any, setLoading: any) => {
-  setLoading(true);
-  const start = new Date().toISOString().split('T')[0];
-  const end = start;
-  const response = await fetch(`${BASE_URL}/history.json?key=${WEATHER_API_KEY}&q=${city}&dt=${start}&end_dt=${end}`);
-  const data = await response.json();
-  setWeather(data);
-  setLocation(data?.location ?? null);
-  setLoading(false);
-};
+import { fetchLocationSuggestions, fetchWeatherForCity } from '@/services/weatherApi';
+import { Location, WeatherAPIResponse } from '@/types/weather';
 
 const Index = () => {
+  const [fontsLoaded] = useFonts({
+    // Replace 'YourIconFontName' with the name you'll use in your styles,
+    // and update the path to your actual font file.
+    // 'YourIconFontName': require('@/assets/fonts/Your-Icon-Font.ttf'),
+  });
+
   const { weather, location, loading } = useWeatherByLocation();
   const hourIndex = getHourIndex();
 
   const [search, setSearch] = useState('');
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<Location[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [customWeather, setCustomWeather] = useState<any>(null);
-  const [customLocation, setCustomLocation] = useState<any>(null);
+  const [customWeather, setCustomWeather] = useState<WeatherAPIResponse | null>(null);
+  const [customLocation, setCustomLocation] = useState<Location | null>(null);
   const [customLoading, setCustomLoading] = useState(false);
 
   const handleChangeText = useCallback(async (text: string) => {
@@ -54,25 +44,36 @@ const Index = () => {
     setShowSuggestions(true);
   }, []);
 
-  const handleSuggestionPress = async (item: any) => {
+  const handleSuggestionPress = async (item: Location) => {
     setSearch(item.name);
     setShowSuggestions(false);
-    await fetchWeatherForCity(item.name, setCustomWeather, setCustomLocation, setCustomLoading);
+    setCustomLoading(true);
+    const data = await fetchWeatherForCity(item.name);
+    setCustomWeather(data);
+    setCustomLocation(data?.location ?? null);
+    setCustomLoading(false);
   };
 
   const handleSearchPress = async () => {
     setShowSuggestions(false);
-    await fetchWeatherForCity(search, setCustomWeather, setCustomLocation, setCustomLoading);
+    const data = await fetchWeatherForCity(search);
+    setCustomWeather(data);
+    setCustomLocation(data?.location ?? null);
   };
 
   const displayWeather = customWeather || weather;
   const displayLocation = customLocation || location;
   const displayLoading = customLoading || loading;
 
+  // Wait until fonts and initial weather data are loaded
+  if (!fontsLoaded && !loading) {
+    return null; // Or a loading spinner/splash screen
+  }
+
   return (
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <LinearGradient colors={['#86CEFA', '#73B9EE', '#5494DA', '#3373C4', '#1750AC', '#003396']} style={styles.container}>
-          <View>
+          <SafeAreaView style={styles.contentContainer}>
             <SearchBar
                 value={search}
                 onChangeText={handleChangeText}
@@ -99,8 +100,10 @@ const Index = () => {
               <HumidityDisplay humidity={displayWeather?.forecast?.forecastday[0]?.hour[hourIndex]?.humidity}/>
               <WindSpeedDisplay windMph={displayWeather?.forecast?.forecastday[0]?.hour[hourIndex]?.wind_mph}/>
             </View>
-            <HourlyForecast hours={displayWeather?.forecast?.forecastday[0]?.hour || []} />
-          </View>
+            <View style={styles.hourly_forecast_container}>
+              <HourlyForecast hours={displayWeather?.forecast?.forecastday[0]?.hour || []} />
+            </View>
+          </SafeAreaView>
         </LinearGradient>
       </TouchableWithoutFeedback>
   );
@@ -110,12 +113,11 @@ export default Index;
 
 const styles = StyleSheet.create({
   container: {
-    borderStyle: 'solid',
-    borderRadius: 12,
-    paddingTop: 50,
-    width: 390,
-    height: 844,
     flex: 1,
+  },
+  contentContainer: {
+    flex: 1,
+    paddingHorizontal: 15,
   },
   icon_and_temp: {
     paddingTop: 50,
@@ -128,5 +130,8 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     flexDirection: 'row',
     justifyContent: 'space-between',
-  }
+  },
+  hourly_forecast_container: {
+    paddingTop: 50,
+  },
 });
